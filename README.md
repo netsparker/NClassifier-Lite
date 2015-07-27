@@ -4,4 +4,4 @@ This lite version contains Bayesian text classification subset of NClassifier fu
 
 ## License
 
-See the [lpgl.txt](lpgl.txt) file for license rights and limitations (LGPL 2.1).
+See the [lgpl.txt](lgpl.txt) file for license rights and limitations of this repository (LGPL 2.1).
