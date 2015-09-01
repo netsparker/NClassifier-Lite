@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.Contracts;
 
 namespace NClassifier
 {
@@ -29,22 +30,19 @@ namespace NClassifier
 
 		private int _nonMatchingCount;
 
-		private double _probability = NeutralProbability;
-
 		/// <summary>
 		/// Gets or sets the matching count.
 		/// </summary>
-		public int MatchingCount 
+		public int MatchingCount
 		{
 			get
 			{
-				return _matchingCount; 
+				return _matchingCount;
 			}
 
 			set
 			{
-				_matchingCount = value; 
-				CalculateProbability();
+				_matchingCount = value;
 			}
 		}
 
@@ -61,16 +59,7 @@ namespace NClassifier
 			set
 			{
 				_nonMatchingCount = value;
-				CalculateProbability();
 			}
-		}
-
-		/// <summary>
-		/// Gets the probability.
-		/// </summary>
-		public double Probability 
-		{
-			get { return _probability; }
 		}
 
 		/// <summary>
@@ -84,26 +73,19 @@ namespace NClassifier
 			_word = word;
 			_matchingCount = matchingCount;
 			_nonMatchingCount = nonMatchingCount;
-			CalculateProbability();
 		}
 
 		/// <summary>
 		/// Calculates the probability.
 		/// </summary>
-		private void CalculateProbability()
+		public double CalculateProbability()
 		{
-			double result;
-
 			if (_matchingCount == 0)
 			{
-				result = _nonMatchingCount == 0 ? NeutralProbability : LowerBound;
-			}
-			else
-			{
-				result = BayesianClassifier.NormalizeSignificance((double)_matchingCount / (_matchingCount + _nonMatchingCount));
+				return _nonMatchingCount == 0 ? NeutralProbability : LowerBound;
 			}
 
-			_probability = result;
+			return BayesianClassifier.NormalizeSignificance((double)_matchingCount / (_matchingCount + _nonMatchingCount));
 		}
 
 		/// <summary>
@@ -114,9 +96,11 @@ namespace NClassifier
 		/// <exception cref="InvalidCastException">Thrown when specified <paramref name="obj"/> is not a <see cref="WordProbability"/> instance.</exception>
 		public int CompareTo(object obj)
 		{
+			Contract.Requires<ArgumentNullException>(obj != null, nameof(obj));
+
 			if (!(obj is WordProbability))
 			{
-				throw new InvalidCastException(string.Format("{0} is not a {1}", obj.GetType(), GetType()));
+				throw new InvalidCastException($"{obj.GetType()} is not a {GetType()}");
 			}
 
 			var rhs = (WordProbability)obj;
@@ -125,7 +109,7 @@ namespace NClassifier
 			{
 				return _word.CompareTo(rhs._word);
 			}
-			
+
 			return 0;
 		}
 	}
