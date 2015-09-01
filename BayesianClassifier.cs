@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
-using System.Text.RegularExpressions;
+using System.Globalization;
 
 namespace NClassifier
 {
@@ -14,15 +14,15 @@ namespace NClassifier
 
 		private static readonly HashSet<string> _stopWords = new HashSet<string>(StringComparer.InvariantCultureIgnoreCase)
 		{
-			"a", "and", "the", "me", "i", "of", "if", "it", 
-			"is", "they", "there", "but", "or", "to", "this", "you", 
+			"a", "and", "the", "me", "i", "of", "if", "it",
+			"is", "they", "there", "but", "or", "to", "this", "you",
 			"in", "your", "on", "for", "as", "are", "that", "with",
 			"have", "be", "at", "or", "was", "so", "out", "not", "an"
 		};
 
 		private readonly Dictionary<string, WordProbability> _words = new Dictionary<string, WordProbability>(StringComparer.InvariantCultureIgnoreCase);
 
-		private static readonly Regex _tokenizeRegex = new Regex(@"\W", RegexOptions.IgnorePatternWhitespace | RegexOptions.Singleline);
+		private static readonly WordProbability[] _emptyWordProbability = new WordProbability[0];
 
 		/// <summary>
 		/// Determines whether the specified input matches.
@@ -51,7 +51,7 @@ namespace NClassifier
 		/// </summary>
 		/// <param name="words">The words.</param>
 		/// <returns>The proximity.</returns>
-		public double Classify(string[] words)
+		public double Classify(IEnumerable<string> words)
 		{
 			var wordProbabilities = CalculateWordsProbability(words);
 			return NormalizeSignificance(CalculateOverallProbability(wordProbabilities));
@@ -63,7 +63,7 @@ namespace NClassifier
 		/// <param name="input">The input.</param>
 		public void TeachMatch(string input)
 		{
-			Contract.Requires<ArgumentNullException>(input != null, "input");
+			Contract.Requires<ArgumentNullException>(input != null, nameof(input));
 
 			TeachMatch(Tokenize(input));
 		}
@@ -74,7 +74,7 @@ namespace NClassifier
 		/// <param name="input">The input.</param>
 		public void TeachNonMatch(string input)
 		{
-			Contract.Requires<ArgumentNullException>(input != null, "input");
+			Contract.Requires<ArgumentNullException>(input != null, nameof(input));
 
 			TeachNonMatch(Tokenize(input));
 		}
@@ -84,9 +84,9 @@ namespace NClassifier
 		/// </summary>
 		/// <param name="input">The input.</param>
 		/// <returns><c>true</c> if the specified input matches; otherwise, <c>false</c>.</returns>
-		public bool IsMatch(string[] input)
+		public bool IsMatch(IEnumerable<string> input)
 		{
-			Contract.Requires<ArgumentNullException>(input != null, "input");
+			Contract.Requires<ArgumentNullException>(input != null, nameof(input));
 
 			var matchProbability = Classify(input);
 
@@ -97,13 +97,12 @@ namespace NClassifier
 		/// Teaches matching inputs.
 		/// </summary>
 		/// <param name="words">The words.</param>
-		public void TeachMatch(string[] words)
+		public void TeachMatch(IEnumerable<string> words)
 		{
-			for (var i = 0; i <= words.Length - 1; i++)
+			foreach (var word in words)
 			{
-				if (IsClassifiableWord(words[i]))
+				if (IsClassifiableWord(word))
 				{
-					var word = words[i];
 					WordProbability wordProbability;
 					if (_words.TryGetValue(word, out wordProbability))
 					{
@@ -121,13 +120,12 @@ namespace NClassifier
 		/// Teaches non-matching inputs.
 		/// </summary>
 		/// <param name="words">The words.</param>
-		public void TeachNonMatch(string[] words)
+		public void TeachNonMatch(IEnumerable<string> words)
 		{
-			for (var i = 0; i <= words.Length - 1; i++)
+			foreach (var word in words)
 			{
-				if (IsClassifiableWord(words[i]))
+				if (IsClassifiableWord(word))
 				{
-					string word = words[i];
 					WordProbability wordProbability;
 					if (_words.TryGetValue(word, out wordProbability))
 					{
@@ -160,8 +158,10 @@ namespace NClassifier
 
 			for (var i = 0; i < wordProbabilities.Count; i++)
 			{
-				z = z == 0 ? 1 - wordProbabilities[i].Probability : z * (1 - wordProbabilities[i].Probability);
-				xy = xy == 0 ? wordProbabilities[i].Probability : xy * wordProbabilities[i].Probability;
+				var probability = wordProbabilities[i].CalculateProbability();
+
+				z = z == 0 ? 1 - probability : z * (1 - probability);
+				xy = xy == 0 ? probability : xy * probability;
 			}
 
 			return xy / (xy + z);
@@ -172,20 +172,21 @@ namespace NClassifier
 		/// </summary>
 		/// <param name="words">The words.</param>
 		/// <returns>The list of <see cref="WordProbability"/> instances.</returns>
-		private IList<WordProbability> CalculateWordsProbability(string[] words)
+		private IList<WordProbability> CalculateWordsProbability(IEnumerable<string> words)
 		{
 			if (words == null)
 			{
-				return new WordProbability[0];
+				return _emptyWordProbability;
 			}
-			
+
 			var wordProbabilities = new List<WordProbability>();
-			for (var i = 0; i < words.Length; i++)
+
+			foreach (var word in words)
 			{
-				if (IsClassifiableWord(words[i]))
+				if (IsClassifiableWord(word))
 				{
 					WordProbability wordProbability;
-					_words.TryGetValue(words[i], out wordProbability);
+					_words.TryGetValue(word, out wordProbability);
 
 					if (wordProbability != null)
 					{
@@ -237,14 +238,53 @@ namespace NClassifier
 			return !string.IsNullOrEmpty(word) && _stopWords.Contains(word);
 		}
 
-		/// <summary>
-		/// Tokenizes the specified input.
-		/// </summary>
-		/// <param name="input">The input.</param>
-		/// <returns>The tokens.</returns>
-		private static string[] Tokenize(string input)
+		public static bool IsTokenChar(char c)
 		{
-			return input == null ? new string[0] : _tokenizeRegex.Split(input);
+			return char.IsLetterOrDigit(c) || CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.ConnectorPunctuation || CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark;
+		}
+
+		public static IEnumerable<string> Tokenize(string text)
+		{
+			if (string.IsNullOrWhiteSpace(text))
+			{
+				yield break;
+			}
+
+			var start = 0;
+			var length = 0;
+
+			for (int i = 0; i < text.Length; i++)
+			{
+				var c = text[i];
+
+				if (IsTokenChar(c))
+				{
+					++length;
+				}
+				else
+				{
+					if (length == 0)
+					{
+						++start;
+					}
+					else
+					{
+						var word = string.Intern(text.Substring(start, length));
+
+						yield return word;
+
+						start += length + 1;
+						length = 0;
+					}
+				}
+			}
+
+			if (length > 0)
+			{
+				var word = string.Intern(text.Substring(start, length));
+
+				yield return word;
+			}
 		}
 	}
 }
